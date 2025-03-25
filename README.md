@@ -1,3 +1,7 @@
+This is a modified version of RTSPtoWeb, a Go-based RTSP streaming server for the web. This project extends the original functionality with additional features and improvements.
+
+This update modifies the WebRTC streaming logic to dynamically fetch ICE server configurations from the HTTP request instead of using predefined ICE server settings from the storage.
+ 
 # RTSPtoWeb share you ip camera to world!
 
 RTSPtoWeb converts your RTSP streams to formats consumable in a web browser
