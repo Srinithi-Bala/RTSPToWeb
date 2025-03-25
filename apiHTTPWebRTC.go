@@ -1,6 +1,7 @@
 package main
 
 import (
+"encoding/json"
 	"time"
 
 	webrtc "github.com/deepch/vdk/format/webrtcv3"
@@ -8,7 +9,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//HTTPAPIServerStreamWebRTC stream video over WebRTC
+// Define IceUrl struct
+type IceUrl struct {
+	StunUrl      string `json:"stunUrl"`
+	TurnUrl      string `json:"turn_url"`
+	TurnUsername string `json:"turn_username"`
+	TurnPassword string `json:"turn_password"`
+}
+
 func HTTPAPIServerStreamWebRTC(c *gin.Context) {
 	requestLogger := log.WithFields(logrus.Fields{
 		"module":  "http_webrtc",
@@ -17,66 +25,94 @@ func HTTPAPIServerStreamWebRTC(c *gin.Context) {
 		"func":    "HTTPAPIServerStreamWebRTC",
 	})
 
+	// Parse ICE configuration from request
+	iceUrl := c.PostForm("res_data")
+	var iceUrlResponse IceUrl
+
+	err := json.Unmarshal([]byte(iceUrl), &iceUrlResponse)
+	if err != nil {
+		c.IndentedJSON(400, Message{Status: 0, Payload: "Invalid ICE server configuration"})
+		requestLogger.WithFields(logrus.Fields{"call": "Unmarshal"}).Errorln("Error parsing ICE JSON:", err)
+		return
+	}
+
+	// Determine ICE server settings
+	var iceServers []string
+	var iceUsername, iceCredential string
+
+	if iceUrlResponse.StunUrl != "" {
+		iceServers = []string{iceUrlResponse.StunUrl}
+	} else {
+		iceServers = []string{iceUrlResponse.TurnUrl}
+		iceUsername = iceUrlResponse.TurnUsername
+		iceCredential = iceUrlResponse.TurnPassword
+	}
+	// Validate stream existence
 	if !Storage.StreamChannelExist(c.Param("uuid"), c.Param("channel")) {
 		c.IndentedJSON(500, Message{Status: 0, Payload: ErrorStreamNotFound.Error()})
-		requestLogger.WithFields(logrus.Fields{
-			"call": "StreamChannelExist",
-		}).Errorln(ErrorStreamNotFound.Error())
+		requestLogger.WithFields(logrus.Fields{"call": "StreamChannelExist"}).Errorln(ErrorStreamNotFound.Error())
 		return
 	}
 
+	// Perform remote authorization
 	if !RemoteAuthorization("WebRTC", c.Param("uuid"), c.Param("channel"), c.Query("token"), c.ClientIP()) {
-		requestLogger.WithFields(logrus.Fields{
-			"call": "RemoteAuthorization",
-		}).Errorln(ErrorStreamUnauthorized.Error())
+		requestLogger.WithFields(logrus.Fields{"call": "RemoteAuthorization"}).Errorln(ErrorStreamUnauthorized.Error())
+		c.IndentedJSON(401, Message{Status: 0, Payload: "Unauthorized"})
 		return
 	}
 
+	// Start stream
 	Storage.StreamChannelRun(c.Param("uuid"), c.Param("channel"))
+
+	// Fetch codecs
 	codecs, err := Storage.StreamChannelCodecs(c.Param("uuid"), c.Param("channel"))
 	if err != nil {
 		c.IndentedJSON(500, Message{Status: 0, Payload: err.Error()})
-		requestLogger.WithFields(logrus.Fields{
-			"call": "StreamCodecs",
-		}).Errorln(err.Error())
+		requestLogger.WithFields(logrus.Fields{"call": "StreamCodecs"}).Errorln(err.Error())
 		return
 	}
-	muxerWebRTC := webrtc.NewMuxer(webrtc.Options{ICEServers: Storage.ServerICEServers(), ICEUsername: Storage.ServerICEUsername(), ICECredential: Storage.ServerICECredential(), PortMin: Storage.ServerWebRTCPortMin(), PortMax: Storage.ServerWebRTCPortMax()})
+
+	// Create WebRTC muxer with dynamic ICE details
+	muxerWebRTC := webrtc.NewMuxer(webrtc.Options{
+		ICEServers:   iceServers,
+		ICEUsername:  iceUsername,
+		ICECredential: iceCredential,
+		PortMin:      Storage.ServerWebRTCPortMin(),
+		PortMax:      Storage.ServerWebRTCPortMax(),
+	})
+
+	// Write WebRTC header
 	answer, err := muxerWebRTC.WriteHeader(codecs, c.PostForm("data"))
 	if err != nil {
 		c.IndentedJSON(400, Message{Status: 0, Payload: err.Error()})
-		requestLogger.WithFields(logrus.Fields{
-			"call": "WriteHeader",
-		}).Errorln(err.Error())
+		requestLogger.WithFields(logrus.Fields{"call": "WriteHeader"}).Errorln(err.Error())
 		return
 	}
+
 	_, err = c.Writer.Write([]byte(answer))
 	if err != nil {
 		c.IndentedJSON(400, Message{Status: 0, Payload: err.Error()})
-		requestLogger.WithFields(logrus.Fields{
-			"call": "Write",
-		}).Errorln(err.Error())
+		requestLogger.WithFields(logrus.Fields{"call": "Write"}).Errorln(err.Error())
 		return
 	}
+
+	// Handle streaming in a goroutine
 	go func() {
 		cid, ch, _, err := Storage.ClientAdd(c.Param("uuid"), c.Param("channel"), WEBRTC)
 		if err != nil {
 			c.IndentedJSON(400, Message{Status: 0, Payload: err.Error()})
-			requestLogger.WithFields(logrus.Fields{
-				"call": "ClientAdd",
-			}).Errorln(err.Error())
+			requestLogger.WithFields(logrus.Fields{"call": "ClientAdd"}).Errorln(err.Error())
 			return
 		}
 		defer Storage.ClientDelete(c.Param("uuid"), cid, c.Param("channel"))
+
 		var videoStart bool
 		noVideo := time.NewTimer(10 * time.Second)
+
 		for {
 			select {
 			case <-noVideo.C:
-				//				c.IndentedJSON(500, Message{Status: 0, Payload: ErrorStreamNoVideo.Error()})
-				requestLogger.WithFields(logrus.Fields{
-					"call": "ErrorStreamNoVideo",
-				}).Errorln(ErrorStreamNoVideo.Error())
+				requestLogger.WithFields(logrus.Fields{"call": "ErrorStreamNoVideo"}).Errorln(ErrorStreamNoVideo.Error())
 				return
 			case pck := <-ch:
 				if pck.IsKeyFrame {
@@ -88,12 +124,12 @@ func HTTPAPIServerStreamWebRTC(c *gin.Context) {
 				}
 				err = muxerWebRTC.WritePacket(*pck)
 				if err != nil {
-					requestLogger.WithFields(logrus.Fields{
-						"call": "WritePacket",
-					}).Errorln(err.Error())
+					requestLogger.WithFields(logrus.Fields{"call": "WritePacket"}).Errorln(err.Error())
 					return
 				}
 			}
 		}
 	}()
 }
+
+
