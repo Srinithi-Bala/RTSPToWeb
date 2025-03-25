@@ -237,11 +237,15 @@ See also the list of [contributors](https://github.com/deepch/RTSPtoWeb/contribu
 
 ## License
 
-This project licensed. License - see the [LICENSE.md](LICENSE.md) file for details
+This project follows the same LICENSE as the original RTSPtoWeb.
 
 [webrtc](https://github.com/pion/webrtc) follows license MIT [license](https://raw.githubusercontent.com/pion/webrtc/master/LICENSE).
 
 [joy4](https://github.com/nareix/joy4) follows license MIT [license](https://raw.githubusercontent.com/nareix/joy4/master/LICENSE).
+
+## Credits
+
+Original project by deepch.
 
 ## Other Example
 
