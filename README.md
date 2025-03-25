@@ -237,7 +237,7 @@ See also the list of [contributors](https://github.com/deepch/RTSPtoWeb/contribu
 
 ## License
 
-This project follows the same LICENSE as the original RTSPtoWeb.
+This project follows the same [license](https://raw.githubusercontent.com/pion/webrtc/master/LICENSE) as the original [RTSPtoWeb](https://github.com/deepch/RTSPtoWeb).
 
 [webrtc](https://github.com/pion/webrtc) follows license MIT [license](https://raw.githubusercontent.com/pion/webrtc/master/LICENSE).
 
@@ -245,7 +245,7 @@ This project follows the same LICENSE as the original RTSPtoWeb.
 
 ## Credits
 
-Original project by deepch.
+Original project by [deepch](https://github.com/deepch).
 
 ## Other Example
 
