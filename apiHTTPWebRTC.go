@@ -26,7 +26,7 @@ func HTTPAPIServerStreamWebRTC(c *gin.Context) {
 	})
 
 	// Parse ICE configuration from request
-	iceUrl := c.PostForm("res_data")
+	iceUrl := c.PostForm("ice_data")
 	var iceUrlResponse IceUrl
 
 	err := json.Unmarshal([]byte(iceUrl), &iceUrlResponse)
